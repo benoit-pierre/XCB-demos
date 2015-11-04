@@ -43,15 +43,39 @@ int main()
     xcb_map_window( c, window );
     xcb_flush( c );
     
-    uint32_t *maskBuf;
-    xcb_input_event_mask_t masks;
-    masks.deviceid = 1;
-    masks.mask_len = 2;
-    maskBuf = xcb_input_event_mask_mask( &masks );
-    maskBuf[ 0 ] = XCB_INPUT_XI_EVENT_MASK_MOTION;
-    maskBuf[ 1 ] = 0;
+    /* The layout of the <masks> parameter to xcb_input_xi_select_events shoud be:
+    ** first mask:             [ xcb_input_event_mask_t | <xcb_input_event_mask_t.mask_len> * uint32_t ]
+    ** ...
+    ** last (<num_mask>) mask: [ xcb_input_event_mask_t | <xcb_input_event_mask_t.mask_len> * uint32_t ]
+    */
+    struct {
+        xcb_input_event_mask_t mask1_header;
+        uint32_t               mask1_value[2];
+        xcb_input_event_mask_t mask2_header;
+        uint32_t               mask2_value[1];
+    } masks;
+    masks.mask1_header.deviceid = 2 /* core pointer */;
+    masks.mask1_header.mask_len = sizeof (masks.mask1_value) / 4;
+    /* Note: native byte order must be respected,
+    ** so on big endian, values should be swapped!
+    ** (32 higher bits, followed by 32 lower bits)
+    */
+    masks.mask1_value[0] =
+        XCB_INPUT_XI_EVENT_MASK_MOTION |
+        XCB_INPUT_XI_EVENT_MASK_BUTTON_PRESS |
+        XCB_INPUT_XI_EVENT_MASK_BUTTON_RELEASE |
+        XCB_INPUT_XI_EVENT_MASK_ENTER |
+        XCB_INPUT_XI_EVENT_MASK_LEAVE;
+    masks.mask1_value[1] = 0 /* mask bits above 32 would go there */;
+    masks.mask2_header.deviceid = XCB_INPUT_DEVICE_ALL;
+    masks.mask2_header.mask_len = sizeof (masks.mask2_value) / 4;
+    masks.mask2_value[0] =
+        XCB_INPUT_XI_EVENT_MASK_KEY_PRESS |
+        XCB_INPUT_XI_EVENT_MASK_KEY_RELEASE |
+        XCB_INPUT_XI_EVENT_MASK_FOCUS_IN |
+        XCB_INPUT_XI_EVENT_MASK_FOCUS_OUT;
     
-    xcb_input_xi_select_events( c, window, 1, &masks );
+    xcb_input_xi_select_events( c, window, 2, &masks.mask1_header );
     xcb_flush( c );
     
     while( ( e = xcb_wait_for_event( c ) ) )
